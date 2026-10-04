@@ -59,3 +59,11 @@ pub fn set_autostart(sh: Sh, enabled: bool) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[tauri::command]
+pub async fn check_risks(sh: Sh<'_>, deep: bool) -> Result<crate::risks::RiskReport, String> {
+    let shared = sh.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || monitor::run_risk_check(&shared, deep))
+        .await
+        .map_err(|_| "风险检查无法完成".to_string())?
+}

@@ -3,12 +3,30 @@
   const invoke = window.__TAURI__.core.invoke;
   const listen = window.__TAURI__.event.listen;
   const $ = id => document.getElementById(id);
-  let cfg, state, apps = [], timer, busySave = false, previousSteps;
+  let cfg, state, apps = [], timer, busySave = false, previousSteps, previousRisks;
   function message(text) { $('message').textContent = String(text); $('message').style.display = 'block'; clearTimeout(timer); timer = setTimeout(() => { $('message').style.display = 'none'; }, 6000); }
   async function call(cmd, args) { try { return await invoke(cmd, args); } catch (e) { message(e); throw e; } }
   function render(s) {
     state = s;
     const pass = s.last?.passed;
+    const riskKey = JSON.stringify(s.risks);
+    if (riskKey !== previousRisks) {
+      previousRisks = riskKey;
+      const container = $('risks'); container.replaceChildren();
+      if (s.risks) {
+        const labels = {risk:'发现风险', unknown:'尚未核验', not_observed:'本次未观察到'};
+        for (const [name, finding] of [['IPv6 状态',s.risks.ipv6],['DNS 配置',s.risks.dns],['IPv6 出口测试',s.risks.ipv6Probe],['DNS 路径测试',s.risks.dnsProbe]]) {
+          if (!finding) continue;
+          const row = document.createElement('div'); row.className = `step risk-${finding.state}`;
+          const label = document.createElement('strong'); label.textContent = `${name} · ${labels[finding.state] || '尚未核验'} `;
+          row.append(label,document.createTextNode(finding.text));container.append(row);
+        }
+        const at = ts => new Date(ts * 1000).toLocaleTimeString('zh-CN',{hour12:false});
+        $('riskTime').textContent = `本机检查 ${at(s.risks.checkedAt)}` + (s.risks.deepCheckedAt ? ` · 深度测试 ${at(s.risks.deepCheckedAt)}（上次结果）` : ' · 尚未深度检测');
+      } else { container.textContent = '尚未完成风险检查'; $('riskTime').textContent = ''; }
+    }
+    $('riskRefresh').disabled = $('riskDeep').disabled = s.riskChecking;
+    $('riskDeep').textContent = s.riskChecking ? '检查进行中…' : '手动深度检测';
     $('version').textContent = `v${s.version}`;
     $('lamp').className = `lamp ${s.checking ? 'busy' : ''} ${s.armed && pass ? 'good' : s.armed && s.last && !pass ? 'bad' : ''}`;
     $('title').textContent = !s.armed ? '观察模式 · 未开启守护' : s.tripped ? '异常 · 已触发关闭' : pass ? '出口通过 · 守护中' : '守护中 · 等待验证';
@@ -87,6 +105,8 @@
     $('save').onclick = () => save().catch(() => {});
     $('check').onclick = () => call('recheck').catch(() => {});
     $('refreshApps').onclick = () => refreshApps().catch(() => {});
+    $('riskRefresh').onclick = () => call('check_risks', {deep:false}).catch(() => {});
+    $('riskDeep').onclick = () => call('check_risks', {deep:true}).catch(() => {});
     $('data').onclick = () => call('open_data_folder').catch(() => {});
     $('autostart').onchange = async () => { try { await call('set_autostart', { enabled: $('autostart').checked }); cfg = await call('get_config'); } catch { $('autostart').checked = cfg.auto_start_with_system; } };
   }

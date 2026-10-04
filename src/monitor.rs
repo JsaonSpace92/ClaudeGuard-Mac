@@ -1,4 +1,5 @@
 //! Original background-check pattern, with explicit arming and stale-result rejection.
+use crate::risks::{self, RiskReport};
 use crate::{
     checks::{self, CheckOutcome},
     config::Config,
@@ -27,6 +28,8 @@ pub struct Shared {
     pub busy: AtomicBool,
     pub stop: AtomicBool,
     pub revision: AtomicU64,
+    pub risks: Mutex<Option<RiskReport>>,
+    risk_busy: AtomicBool,
     failures: Mutex<u32>,
     app: Mutex<Option<tauri::AppHandle>>,
     wake: Condvar,
@@ -45,6 +48,8 @@ pub struct StatusSnapshot {
     pub version: &'static str,
     pub last_checked_at: u64,
     pub last_duration_ms: u64,
+    pub risks: Option<RiskReport>,
+    pub risk_checking: bool,
 }
 impl Shared {
     pub fn new(cfg: Config) -> Self {
@@ -56,6 +61,8 @@ impl Shared {
             busy: AtomicBool::new(false),
             stop: AtomicBool::new(false),
             revision: AtomicU64::new(0),
+            risks: Mutex::new(None),
+            risk_busy: AtomicBool::new(false),
             failures: Mutex::new(0),
             app: Mutex::new(None),
             wake: Condvar::new(),
@@ -92,6 +99,8 @@ impl Shared {
             version: env!("CARGO_PKG_VERSION"),
             last_checked_at: self.last_checked_at.load(Ordering::SeqCst),
             last_duration_ms: self.last_duration_ms.load(Ordering::SeqCst),
+            risks: self.risks.lock().unwrap().clone(),
+            risk_checking: self.risk_busy.load(Ordering::SeqCst),
         }
     }
     pub fn emit_status(&self) {
@@ -134,6 +143,7 @@ impl Shared {
         cfg.save().map_err(|e| e.to_string())?;
         *current = cfg;
         self.revision.fetch_add(1, Ordering::SeqCst);
+        *self.risks.lock().unwrap() = None;
         *self.failures.lock().unwrap() = 0;
         *self.last.lock().unwrap() = None;
         *self.tripped.lock().unwrap() = None;
@@ -288,6 +298,48 @@ pub fn spawn_monitor(sh: Arc<Shared>) -> std::thread::JoinHandle<()> {
                 + Duration::from_secs(sh.cfg.lock().unwrap().check_interval_secs.clamp(1, 60));
         }
     })
+}
+
+/// Diagnostics are independent of the guard worker and never invoke guard::trip.
+pub fn run_risk_check(sh: &Arc<Shared>, deep: bool) -> Result<RiskReport, String> {
+    if sh.risk_busy.swap(true, Ordering::SeqCst) {
+        return Err("风险检查正在进行，请稍后重试".into());
+    }
+    sh.emit_status();
+    let (cfg, revision) = {
+        let cfg = sh.cfg.lock().unwrap();
+        (cfg.clone(), sh.revision.load(Ordering::SeqCst))
+    };
+    let mut report = risks::inspect(&cfg, deep);
+    let current = sh.cfg.lock().unwrap();
+    let valid = !sh.stop.load(Ordering::SeqCst) && revision == sh.revision.load(Ordering::SeqCst);
+    if valid {
+        let mut stored = sh.risks.lock().unwrap();
+        if !deep {
+            if let Some(previous) = stored.as_ref() {
+                report.ipv6_probe = previous.ipv6_probe.clone();
+                report.dns_probe = previous.dns_probe.clone();
+                report.deep_checked_at = previous.deep_checked_at;
+            }
+        }
+        *stored = Some(report.clone());
+    }
+    drop(current);
+    sh.risk_busy.store(false, Ordering::SeqCst);
+    sh.emit_status();
+    if valid {
+        Ok(report)
+    } else {
+        Err("设置已改变或守护器退出，请重新检测".into())
+    }
+}
+pub fn spawn_risk_monitor(sh: Arc<Shared>) {
+    std::thread::spawn(move || {
+        while !sh.stop.load(Ordering::SeqCst) {
+            let _ = run_risk_check(&sh, false);
+            std::thread::park_timeout(Duration::from_secs(60));
+        }
+    });
 }
 
 #[cfg(test)]

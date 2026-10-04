@@ -16,6 +16,7 @@
 - `src/main.rs`：应用入口、窗口与菜单栏生命周期。
 - `src/monitor.rs`：单线程调度、请求队列、状态与异常关闭编排。
 - `src/checks.rs`：显式代理、端口与公网出口检测。
+- `src/risks.rs`：独立 IPv6 / DNS 风险诊断，结果不得进入关闭判断。
 - `src/guard.rs`：应用发现、进程身份校验、关闭与日志。
 - `src/config.rs`：配置读写和迁移。
 - `src/install.rs`：用户级登录自启。

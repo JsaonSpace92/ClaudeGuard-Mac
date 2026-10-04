@@ -20,6 +20,13 @@ def find_cargo():
     raise SystemExit("Cargo not found. Install Rust and add cargo to PATH.")
 
 
+def ignore_vanished_metadata(func, path, exc_info):
+    # On external volumes, removing a file can also remove its AppleDouble twin.
+    if isinstance(exc_info[1], FileNotFoundError) and Path(path).name.startswith("._"):
+        return
+    raise exc_info[1]
+
+
 def main():
     if sys.platform != "darwin":
         raise SystemExit("This packaging script requires macOS.")
@@ -36,7 +43,7 @@ def main():
     subprocess.run([cargo, "build", "--release", "--locked"], cwd=root, check=True)
     app = root / "dist" / f'{config["productName"]}.app'
     if app.exists():
-        shutil.rmtree(app)
+        shutil.rmtree(app, onerror=ignore_vanished_metadata)
     macos = app / "Contents/MacOS"
     resources = app / "Contents/Resources"
     macos.mkdir(parents=True)
@@ -65,6 +72,13 @@ def main():
         NSHighResolutionCapable=True,
     )
     (app / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
+    # Generated app contents only: AppleDouble sidecars are not app resources.
+    for sidecar in app.rglob("._*"):
+        try:
+            if sidecar.is_file() and sidecar.read_bytes()[:4] == b"\x00\x05\x16\x07":
+                sidecar.unlink()
+        except FileNotFoundError:
+            pass
     subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", str(app)], check=True)
     subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(app)], check=True)
     print(app)

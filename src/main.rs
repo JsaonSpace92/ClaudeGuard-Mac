@@ -4,6 +4,7 @@ mod guard;
 mod install;
 mod ipc;
 mod monitor;
+mod risks;
 
 use monitor::{Purpose, Shared};
 use std::sync::{atomic::Ordering, Arc};
@@ -40,6 +41,15 @@ fn show_manager(app: &tauri::AppHandle) -> tauri::Result<()> {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args
+        .iter()
+        .any(|a| a == "--risk-check" || a == "--risk-deep")
+    {
+        let cfg = config::Config::load();
+        let report = risks::inspect(&cfg, args.iter().any(|a| a == "--risk-deep"));
+        println!("{}", serde_json::to_string_pretty(&report).unwrap());
+        return;
+    }
     if args.iter().any(|a| a == "--check") {
         let cfg = config::Config::load();
         let out = checks::run_checks(&cfg, |_| {});
@@ -76,6 +86,7 @@ fn main() {
             ipc::app_status,
             ipc::recent_logs,
             ipc::open_data_folder,
+            ipc::check_risks,
             ipc::set_autostart
         ])
         .setup(move |app| {
@@ -139,6 +150,7 @@ fn main() {
                 .build(app)?;
             setup.log("macOS 版就绪：仅检测出口并关闭应用，不设置防火墙、不修改 Clash");
             monitor::spawn_monitor(setup.clone());
+            monitor::spawn_risk_monitor(setup.clone());
             Ok(())
         })
         .build(tauri::generate_context!());

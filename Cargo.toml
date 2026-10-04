@@ -1,6 +1,6 @@
 [package]
 name = "claude-guard"
-version = "2.10.4"
+version = "2.11.2"
 edition = "2021"
 description = "macOS 菜单栏出口守护器：代理出口校验、桌面应用异常关闭"
 
