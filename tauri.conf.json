@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ClaudeGuard Mac",
+  "identifier": "local.claudeguard.mac",
+  "build": {
+    "frontendDist": "ui-mac"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        "default"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [],
+    "icon": [
+      "assets/icon.png"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ClaudeGuard Mac</title><link rel="stylesheet" href="app.css"></head><body>
+<header><div class="brand">◉ ClaudeGuard <span>Mac</span></div><span id="version"></span></header>
+<main>
+<section class="card status"><div id="lamp" class="lamp"></div><h1 id="title">正在载入</h1><p id="subtitle">AI 桌面应用出口守护</p><div class="ip"><span>检测出口</span><strong id="ip">—</strong></div><div class="actions"><button id="arm" class="primary">开启守护</button><button id="check">立即检测</button></div><p class="hint" id="lastCheck">尚未完成检测</p><small id="mode">首次使用先填写静态 IP，保存后手动开启。</small></section>
+<section class="card"><div class="section-title"><h2>守护应用</h2><button class="text" id="refreshApps">刷新</button></div><div id="apps"></div><p class="hint">只关闭应用包内的主程序和辅助进程；独立终端、MCP、外部浏览器不在第一版范围内。</p></section>
+<section class="card"><h2>出口设置</h2><label>Clash HTTP / Mixed 端口<input id="port" type="number" min="1" max="65535" value="7897"></label><label>允许的静态出口 IP<textarea id="ips" rows="2" placeholder="填写芝加哥公网出口 IP；多条用换行分隔"></textarea></label><div class="columns"><label>检测间隔（秒）<input id="interval" type="number" min="1" max="60" value="2"></label><label>请求超时（秒）<input id="timeout" type="number" min="1" max="10" value="2"></label></div><label>探测服务连续失败几次后关闭<input id="threshold" type="number" min="1" max="5" value="2"></label><p class="hint">出口 IP 不匹配或本机代理端口关闭时立即触发；两个探测服务均失败时按上述次数触发。检测耗时也计入响应时间。</p><label class="toggle"><input id="closeTray" type="checkbox" checked>关闭窗口后留在菜单栏守护</label><label class="toggle"><input id="autostart" type="checkbox">登录时启动</label><button id="save">保存设置</button></section>
+<section class="card"><h2>检查详情</h2><div id="steps" class="steps">尚无结果</div></section>
+<section class="card"><div class="section-title"><h2>运行日志</h2><button id="data" class="text">打开数据目录</button></div><pre id="logs">暂无日志</pre></section>
+<p class="footnote">使用现有 Clash 入口，不修改其配置。探测网站与应用可能被 Clash 分流到不同出口；本工具检测后关闭应用，有检测窗口，不保证零泄露。使用前请确认这些流量都经过同一个固定出口。</p>
+<div id="message" role="status"></div>
+</main><script src="main.js"></script></body></html>

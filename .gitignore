@@ -1,0 +1,35 @@
+# Rust / Tauri 生成文件
+/target/
+/dist/
+/gen/
+
+# macOS 与编辑器本地文件
+.DS_Store
+._*
+.idea/
+.vscode/
+*.swp
+*.swo
+__pycache__/
+*.py[cod]
+
+# 本机配置、检测日志、凭据与签名材料
+/config.json
+/config.*.json
+.env
+.env.*
+!.env.example
+*.log
+*.log.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+
+# 本地备份与分发产物
+/backup/
+*.app/
+*.dmg
+*.zip
+*.tar.gz
