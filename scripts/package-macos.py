@@ -64,14 +64,24 @@ def main():
             "/usr/bin/iconutil", "-c", "icns", str(iconset),
             "-o", str(resources / "AppIcon.icns"),
         ], check=True)
+    subprocess.run([
+        "/usr/bin/xcrun", "swiftc", "-swift-version", "5", "-target",
+        subprocess.check_output(["/usr/bin/uname", "-m"], text=True).strip() + "-apple-macos12.0",
+        "-o", str(macos / "claudeguard-network"),
+        str(root / "network-extension/Policy.swift"), str(root / "network-extension/Controller.swift"),
+        "-framework", "NetworkExtension", "-framework", "SystemExtensions",
+    ], check=True)
+    shutil.copytree(root / "browser-extension", resources / "BrowserProtection",
+                    ignore=shutil.ignore_patterns("._*"))
     info = dict(
         CFBundleName=config["productName"], CFBundleDisplayName=config["productName"],
         CFBundleIdentifier=config["identifier"], CFBundleExecutable="claude-guard",
         CFBundlePackageType="APPL", CFBundleShortVersionString=version,
         CFBundleVersion=version, CFBundleIconFile="AppIcon", LSMinimumSystemVersion="12.0",
-        NSHighResolutionCapable=True,
+        NSHighResolutionCapable=True, CGNetworkProvisioned=False,
     )
     (app / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
+    subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", str(macos / "claudeguard-network")], check=True)
     # Generated app contents only: AppleDouble sidecars are not app resources.
     for sidecar in app.rglob("._*"):
         try:

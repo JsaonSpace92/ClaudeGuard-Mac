@@ -126,7 +126,12 @@ impl Config {
         let clean: Vec<String> = self
             .allowed_ips
             .iter()
-            .map(|s| s.trim().to_string())
+            .map(|s| {
+                let ip = s.trim();
+                ip.parse::<std::net::IpAddr>()
+                    .map(|ip| ip.to_string())
+                    .unwrap_or_else(|_| ip.to_string())
+            })
             .filter(|s| !s.is_empty())
             .collect();
         let dedup: Vec<String> = {
@@ -255,6 +260,21 @@ mod tests {
         ];
         assert!(cfg.migrate());
         assert_eq!(cfg.allowed_ips, vec!["1.2.3.4", "5.6.7.8"]);
+    }
+
+    #[test]
+    fn whitelist_canonicalizes_ipv6_without_hiding_invalid_entries() {
+        let mut cfg = Config {
+            allowed_ips: vec![
+                "2001:0DB8:0:0:0:0:0:1".into(),
+                "2001:db8::1".into(),
+                "bad-ip".into(),
+            ],
+            ..Config::default()
+        };
+        assert!(cfg.migrate());
+        assert_eq!(cfg.allowed_ips, vec!["2001:db8::1", "bad-ip"]);
+        assert!(crate::monitor::validate_config(&cfg).is_err());
     }
 
     /// 行为锁: v2.7 守护对象——默认只守 Claude；未知 id 清理但全垃圾时回填 claude；

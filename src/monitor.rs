@@ -22,6 +22,7 @@ pub enum Purpose {
 }
 pub struct Shared {
     pub cfg: Mutex<Config>,
+    pub browser_tests: crate::leaks::BrowserTests,
     pub last: Mutex<Option<CheckOutcome>>,
     pub tripped: Mutex<Option<TripResult>>,
     pub loglines: Mutex<Vec<String>>,
@@ -55,6 +56,7 @@ impl Shared {
     pub fn new(cfg: Config) -> Self {
         Self {
             cfg: Mutex::new(cfg),
+            browser_tests: crate::leaks::BrowserTests::default(),
             last: Mutex::new(None),
             tripped: Mutex::new(None),
             loglines: Mutex::new(Vec::new()),
@@ -144,6 +146,7 @@ impl Shared {
         *current = cfg;
         self.revision.fetch_add(1, Ordering::SeqCst);
         *self.risks.lock().unwrap() = None;
+        self.browser_tests.invalidate();
         *self.failures.lock().unwrap() = 0;
         *self.last.lock().unwrap() = None;
         *self.tripped.lock().unwrap() = None;
@@ -333,15 +336,6 @@ pub fn run_risk_check(sh: &Arc<Shared>, deep: bool) -> Result<RiskReport, String
         Err("设置已改变或守护器退出，请重新检测".into())
     }
 }
-pub fn spawn_risk_monitor(sh: Arc<Shared>) {
-    std::thread::spawn(move || {
-        while !sh.stop.load(Ordering::SeqCst) {
-            let _ = run_risk_check(&sh, false);
-            std::thread::park_timeout(Duration::from_secs(60));
-        }
-    });
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

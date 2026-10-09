@@ -1,0 +1,66 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>ClaudeGuard · 当前浏览器检测</title>
+<style>body{font:16px/1.65 system-ui;max-width:760px;margin:40px auto;padding:0 24px;background:#f6f7f9;color:#17212b}button{padding:12px 20px;border:0;border-radius:8px;background:#156458;color:white;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:white;padding:20px;border-radius:12px}.note{color:#52606d}button:disabled{opacity:.5}</style>
+<h1>检测当前浏览器的网络出口</h1><p>测试由打开本页的浏览器执行。结果会回到 ClaudeGuard App；本页无法检测其他桌面 App。</p>
+<p class="note">测试会访问 ipify、Google／Cloudflare STUN 和 bash.ws 测试域名。从 App 打开时自动开始，也可点击按钮手动开始。这些服务会看到对应请求的出口。本页不申请麦克风或摄像头权限；权限不同可能改变 WebRTC 的候选结果。</p>
+<button id="run">开始检测</button><p id="status">会话有效期 10 分钟。切换网络、代理或浏览器设置后，请重新测试。</p><pre id="result">尚未检测</pre>
+<script>
+(() => {
+'use strict';
+const allowed = __ALLOWED_IPS__;
+const base = location.pathname.replace(/\/$/,'');
+const normal = value => { try { const v = String(value); return v.includes(':') ? new URL(`http://[${v}]/`).hostname.slice(1,-1) : v; } catch { return ''; } };
+const allow = new Set(allowed.map(normal));
+const publicIP = ip => {
+ if (!ip || ip.endsWith('.local')) return false;
+ if (ip.includes(':')) { const s=normal(ip);return !!s && s!=='::' && s!=='::1' && !/^(fc|fd|fe[89ab])/i.test(s); }
+ const p=ip.split('.').map(Number);if(p.length!==4||p.some(x=>!Number.isInteger(x)||x<0||x>255))return false;
+ return p[0]!==0&&p[0]!==10&&p[0]!==127&&p[0]<224&&!(p[0]===169&&p[1]===254)&&!(p[0]===192&&p[1]===168)&&!(p[0]===172&&p[1]>=16&&p[1]<=31);
+};
+const verdict = ips => !ips.length ? '未完成核验：未获得公网地址' : !allow.size ? '未完成核验：未配置允许的出口' : ips.some(ip=>!allow.has(normal(ip))) ? '发现风险：出现白名单之外的出口' : '本次未发现白名单之外的出口';
+async function get(url, options={}, timeout=8000) { const r=await fetch(url,{...options,cache:'no-store',signal:AbortSignal.timeout(timeout)});if(!r.ok)throw Error('服务未返回有效结果');return r.json(); }
+async function exit(url) { try { const r=await get(url);return typeof r.ip==='string'&&r.ip.length<64 ? r.ip : null; } catch { return null; } }
+async function rtc(urls) {
+ const addresses=[], errors=[];let pc;
+ try {
+  if(!window.RTCPeerConnection)return {state:'未完成核验：浏览器不支持 WebRTC',candidates:[]};
+  pc=new RTCPeerConnection({iceServers:urls.map(url=>({urls:url}))});
+  pc.onicecandidateerror=e=>{if(errors.length<8)errors.push({code:e.errorCode,text:String(e.errorText||'').slice(0,160),url:String(e.url||'').slice(0,160)});};
+  const done=new Promise(resolve=>{const timer=setTimeout(resolve,12000);pc.onicecandidate=e=>{
+   if(!e.candidate){clearTimeout(timer);resolve();return;}
+   const c=e.candidate, tokens=c.candidate.split(/\s+/);
+   const address=c.address||tokens[4]||'';const type=c.type||tokens[tokens.indexOf('typ')+1]||'unknown';
+   if(address.length<256&&!addresses.some(a=>a.address===address&&a.type===type))addresses.push({address,type,protocol:c.protocol||tokens[2]||'unknown'});
+  };});
+  pc.createDataChannel('probe');await pc.setLocalDescription(await pc.createOffer());await done;
+  const publicAddresses=addresses.map(c=>c.address).filter(publicIP);
+  return {state:!publicAddresses.length&&errors.length?'未完成核验：STUN 探测报错':verdict(publicAddresses),candidates:addresses.slice(0,32),iceState:pc.iceGatheringState,errors,note:'未收集到公网候选不代表已阻止所有 UDP；本次未申请媒体权限'};
+ } catch { return {state:'未完成核验：WebRTC 探测失败',candidates:addresses}; } finally {if(pc)pc.close();}
+}
+async function dns() {
+ try {
+  const start=await get(base+'/dns-start',{method:'POST'},18000);
+  if(!start.id||!/^[a-zA-Z0-9-]{1,64}$/.test(start.id))throw Error('无法创建 DNS 会话');
+  await Promise.all(Array.from({length:10},(_,i)=>new Promise(resolve=>{
+   const img=new Image(),timer=setTimeout(resolve,3500);img.onload=img.onerror=()=>{clearTimeout(timer);resolve();};img.src=`https://${i+1}.${start.id}.bash.ws/probe.png`;
+  })));
+  await new Promise(resolve=>setTimeout(resolve,1500));
+  const result=await get(base+'/dns-result',{method:'POST'},18000);
+  if(result&&typeof result.error==='string')return {state:'未完成核验：检测服务未观察到公网解析器',resolvers:[],note:'Fake-IP、缓存或服务状态均可能影响采样，不能判定安全'};
+  if(!Array.isArray(result))throw Error('DNS 检测服务不可用');
+  const resolvers=result.filter(x=>x&&x.type==='dns').slice(0,32).map(x=>({ip:String(x.ip||'').slice(0,64),country:String(x.country_name||'').slice(0,100),asn:String(x.asn||'').slice(0,100)}));
+  return {state:resolvers.length?'已观察到解析器，是否符合预期需结合 DNS 策略核验':'未完成核验：未观察到解析器',resolvers,note:'DNS 与代理出口 IP／ASN 不同，不自动判定泄露'};
+ } catch(e) {return {state:'未完成核验：DNS 后端不可达或会话不可用',resolvers:[]};}
+}
+document.getElementById('run').onclick=async()=>{
+ const btn=document.getElementById('run');btn.disabled=true;document.getElementById('status').textContent='正在检测…';
+ let urls=['stun:stun.l.google.com:19302','stun:stun.cloudflare.com:3478'];
+ try {const config=await get(base+'/stun-config',{method:'POST'},18000);if(Array.isArray(config.urls)&&config.urls.length===2&&config.urls.every(url=>typeof url==='string'&&/^stun:[a-zA-Z0-9.:-]+$/.test(url)))urls=config.urls;}catch{}
+ const [ipv4,ipv6,webrtc,dnsResult]=await Promise.all([exit('https://api.ipify.org?format=json'),exit('https://api6.ipify.org?format=json'),rtc(urls),dns()]);
+ const report={scope:'当前浏览器主动探测（浏览器上报，非抓包验证）',browser:navigator.userAgent.slice(0,256),checkedAt:new Date().toISOString(),ipv4:{address:ipv4,state:verdict(ipv4?[ipv4]:[])},ipv6:{address:ipv6,state:verdict(ipv6?[ipv6]:[])},webrtc,dns:dnsResult};
+ document.getElementById('result').textContent=JSON.stringify(report,null,2);
+ try {await get(base+'/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)});document.getElementById('status').textContent='结果已返回 ClaudeGuard App。';}
+ catch {document.getElementById('status').textContent='检测完成，但 App 会话可能已结束。请保留此页结果。';}
+};
+if(location.hash==='#run')document.getElementById('run').click();
+})();
+</script></html>

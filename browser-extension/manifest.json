@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "ClaudeGuard WebRTC Protection",
+  "version": "0.1.0",
+  "description": "使用浏览器隐私 API 禁止非代理 WebRTC UDP；需配合 ClaudeGuard 的系统级保护。",
+  "permissions": ["privacy"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_popup": "popup.html"}
+}

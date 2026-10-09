@@ -19,7 +19,7 @@
 - 实际 Claude / ChatGPT / Antigravity 的断链关闭演练。
 - 每个实际目标应用与公网探测网站的 Clash 路由一致性证明。
 - DNS 递归解析器公网出口和目标应用实际流量的抓包核验。
-- WebRTC / UDP 应用功能核验（本版本不包含 WebRTC 检测）。
+- WebRTC / UDP 真实浏览器与桌面应用流量核验（新增检测范围见下文）。
 - Intel Mac、旧版 macOS、Developer ID 签名与公证验证。
 
 ## 性能参考
@@ -31,3 +31,19 @@
 ## 重新验证
 
 执行 README 中的本地验证命令。真实断链测试会强制关闭勾选的应用，演练前应结束应用中的任务；自动测试不使用真实应用进行关闭演练。
+
+## 2026-10-07：检测与实验性系统扩展
+
+- Rust 24 项测试通过，含 STUN 事务/IPv6/截断校验、浏览器回环服务跨站与 Host 检查、会话失效。
+- cargo fmt --check、cargo clippy --locked -- -D warnings 和 JavaScript 语法检查通过。
+- Swift 网络控制器、FilterProvider、DNSProvider 编译通过。
+- 本地策略测试覆盖应用包边界、Helper、精确代理入口及 UDP/TCP/IPv6 拒绝。
+- 回环模拟代理观察到 DoH 的 CONNECT 请求；拒绝时返回检测失败，未获得直连 DNS 成功结果。此测试不替代物理网卡抓包。
+- App 使用独立 CARGO_TARGET_DIR 构建；原缓存包含旧目录引用。外置卷签名生成的 AppleDouble 文件在生成产物范围内处理。
+- 未安装或启用系统扩展；没有真实浏览器/Claude 防泄露通过结论。签名、权限、既存连接、未知身份、崩溃行为、Clash/TUN 共存、实际数据包路径均待验收。详见 LEAK-PROTECTION.md。
+
+继续复查：Rust 25 项测试通过，新增配置变更与退出时丢弃检测结果的测试；原生策略及模拟代理测试再次通过。打包后的 App 返回 `unavailable`，ad-hoc 签名校验通过；本机再次确认 0 个可用代码签名身份。新增 DNS/UDP 检测的配置版本核对，防止更换代理设置后展示旧结果；浏览器会话启动与配置失效同步。网络状态读取失败时显示“未确认”，不沿用之前的状态。
+
+## 2026-10-07：统一检查界面与逐项实测
+
+首页参考深色出口概览和检查列表，DNS/WebRTC/IPv6/UDP 详情合并；保留守护和实验性阻止。新增只读系统环境、出口概览、Claude HTTP 端点连通性及 IPsum 公共名单比对。Rust 30 项测试通过。功能实测与未验证项目见 [逐项测试报告](DASHBOARD-VALIDATION.md)；视觉核对见项目根目录 design-qa.md。检测服务无法采样、UDP 无应答和缺少签名均不能报告为已安全。

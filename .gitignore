@@ -33,3 +33,6 @@ __pycache__/
 *.dmg
 *.zip
 *.tar.gz
+
+# macOS Network Extension provisioning profiles
+*.provisionprofile

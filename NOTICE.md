@@ -11,3 +11,18 @@
 在本地保存的该基础提交中，未发现独立 LICENSE 文件。本仓库不新增 MIT、Apache 等许可，也不把上游代码重新声明为其他许可证。发布前应核实上游授权情况；仓库可见性与代码使用许可是不同事项。
 
 Rust 第三方依赖的具体版本见 Cargo.lock，各依赖适用各自的许可证。
+
+新增检测与实验性网络扩展使用公开协议和系统 API 独立实现；参考项目和边界见 docs/LEAK-PROTECTION.md。没有复制 LuLu 等项目代码，也未改变本仓库许可声明。
+
+## Dashboard UI icons
+
+Selected SVG assets in `ui-mac/icons/` are from Phosphor Icons Core
+(https://github.com/phosphor-icons/core), licensed under MIT.
+The upstream copyright and license are preserved in `ui-mac/icons/LICENSE`.
+
+## Optional public reputation data
+
+The on-demand IP reputation check downloads the public IPsum feed from
+https://github.com/stamparm/ipsum and compares the observed proxy IP locally.
+IPsum is published under the Unlicense. No feed is embedded or persisted in the
+application bundle, and list occurrences are not represented as a risk score.

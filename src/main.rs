@@ -1,10 +1,14 @@
 mod checks;
 mod config;
+mod dashboard;
 mod guard;
 mod install;
 mod ipc;
+mod leaks;
 mod monitor;
+mod network;
 mod risks;
+mod socks_udp;
 
 use monitor::{Purpose, Shared};
 use std::sync::{atomic::Ordering, Arc};
@@ -19,8 +23,8 @@ fn show_manager(app: &tauri::AppHandle) -> tauri::Result<()> {
     let sh = app.state::<Arc<Shared>>().inner().clone();
     let win = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
         .title("ClaudeGuard Mac · AI 出口守护")
-        .inner_size(520.0, 760.0)
-        .min_inner_size(470.0, 580.0)
+        .inner_size(980.0, 860.0)
+        .min_inner_size(520.0, 640.0)
         .icon(tauri::image::Image::from_bytes(include_bytes!(
             "../assets/icon.png"
         ))?)?
@@ -43,11 +47,65 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args
         .iter()
+        .any(|a| a == "--dashboard-check" || a == "--system-dns-check")
+    {
+        let cfg = config::Config::load();
+        let result = if args.iter().any(|a| a == "--system-dns-check") {
+            leaks::probe_system_dns(&cfg)
+        } else {
+            dashboard::inspect(&cfg)
+        };
+        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        return;
+    }
+    if args.iter().any(|a| a == "--system-environment") {
+        println!(
+            "{}",
+            network::control("environment", None)
+                .unwrap_or_else(|error| serde_json::json!({"state":"unknown","message":error}))
+        );
+        return;
+    }
+    if args.iter().any(|a| a == "--browser-session") {
+        // Diagnostic session only: no monitor, application launch or closure.
+        let tests = leaks::BrowserTests::default();
+        match tests.start(config::Config::load()) {
+            Ok(url) => {
+                println!("{url}");
+                for _ in 0..600 {
+                    if let Some(report) = tests.report() {
+                        println!("{}", serde_json::to_string(&report).unwrap());
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            }
+            Err(error) => eprintln!("{error}"),
+        }
+        return;
+    }
+    if args
+        .iter()
         .any(|a| a == "--risk-check" || a == "--risk-deep")
     {
         let cfg = config::Config::load();
         let report = risks::inspect(&cfg, args.iter().any(|a| a == "--risk-deep"));
         println!("{}", serde_json::to_string_pretty(&report).unwrap());
+        return;
+    }
+    if args.iter().any(|a| a == "--network-status") {
+        println!(
+            "{}",
+            network::control("status", None)
+                .unwrap_or_else(|e| serde_json::json!({"state":"error","message":e}))
+        );
+        return;
+    }
+    if args.iter().any(|a| a == "--udp-check") {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&leaks::probe_udp(&config::Config::load())).unwrap()
+        );
         return;
     }
     if args.iter().any(|a| a == "--check") {
@@ -86,8 +144,19 @@ fn main() {
             ipc::app_status,
             ipc::recent_logs,
             ipc::open_data_folder,
+            ipc::open_coffee_test,
+            ipc::current_proxy_exit,
             ipc::check_risks,
-            ipc::set_autostart
+            ipc::set_autostart,
+            ipc::browser_test,
+            ipc::browser_protection_files,
+            ipc::browser_report,
+            ipc::udp_test,
+            ipc::system_dns_test,
+            ipc::network_apps,
+            ipc::network_control,
+            ipc::dashboard_probe,
+            ipc::system_environment
         ])
         .setup(move |app| {
             setup.attach(app.handle().clone());
@@ -148,9 +217,8 @@ fn main() {
                     }
                 })
                 .build(app)?;
-            setup.log("macOS 版就绪：仅检测出口并关闭应用，不设置防火墙、不修改 Clash");
+            setup.log("macOS 版就绪：Net.Coffee 网站检测与自定义出口白名单；不修改 Clash");
             monitor::spawn_monitor(setup.clone());
-            monitor::spawn_risk_monitor(setup.clone());
             Ok(())
         })
         .build(tauri::generate_context!());
